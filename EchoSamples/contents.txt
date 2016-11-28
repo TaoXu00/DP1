@@ -1,0 +1,47 @@
+Basic examples of server and client programming (echo service) using the bsd4.3 socket API
+Programs are written in a way that favors portability between Unix and Windows.
+No system-specific features are dealt with.
+
+================================================================================================
+mybsdfun.h	Header file for Unix (defines utility functions and functions to hide
+		Unix-Windows differences)
+mybsdfun.c	Implementation for Unix of utility functions and functions to hide
+		Unix-Windows differences
+makefile		compilation makefile
+
+Compilation command (compiles all sources):
+make
+
+Contents of different sources
+================================================================================================
+Client0.c	Sample TCP echo client (line oriented).
+		Reads the TCP echo server address and port number from keyboard		
+		Connects to the server
+		Iteratively reads a line of text from keuboard, sends it to the server,
+		waits for the response from the server and finally shows the response.
+		Terminates after having processed the "stop" or the "close" line.
+Server0.c	Sample TCP echo server (sequential).
+		Reads the port number to be used from keyboard.			
+		Starts listening on the specified port and accepts connections sequentially.
+		For each accepted connection, iteratively reads characters and echoes them
+		back to the client until the connection is closed by the client.
+		On connection closing or errors the server passes on to serve the next
+		connection.
+Server1.c	Sample TCP echo server (with mono-process simulated concurrency).
+		Like Server0.c, but manages multiple connections concurrently without using
+		processes or threads.
+Server2.c	Sample TCP echo server (concurrent, based on Unix processes created on demand).
+		Like Server0.c, but manages multiple connections by multiple Unix processes
+		created on demand.
+Server3.c	Sample TCP echo server (concurrent, based on a pool of Unix processes).
+		Like Server0.c, but manages multiple connections by multiple Unix processes
+		created on server startup.
+Client1u.c	Sample UDP echo client (line oriented).
+		Like Client1.c, but uses UDP instead of TCP as transport protocol.
+		The response from the server is waited for at most a given time amount.
+Server0u.c	Sample UDP echo server (sequential)
+		Reads the port number to be used from keyboard.	
+		Iteratively receives a datagram and echoes it back to the client.
+================================================================================================
+
+The programs can be ported to Windows by defining Windows specific header and utility files.
