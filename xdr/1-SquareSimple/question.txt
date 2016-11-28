@@ -1,0 +1,33 @@
+Queation:
+for XDR SquareClient.c:
+//marco function;
+1.sscanf(argv[2], "%" SCNu16, &tport_h) 
+
+2.for line 81,why we can req = input,input is unsigned,and req is hyper xdrhyper,it is 8bytes,and unsigned is 4 bytes.
+
+3.xdr_xdrhyper(&xdrs_out, &req) 
+
+4.what is the relationship between the stream and the buf
+ line 83. xdrmem_create(&xdrs_out, buf, BUFLEN, XDR_ENCODE);
+
+5.xdr_getpos(&xdrs_out) why we get the length from the steam,not from the buf.
+
+6.xdr_Response(&xdrs_in, &res) where is this function?
+  generate automaticly according to the xdr file.
+7.if the xdr buffer size is fixed or not?
+  we have receive buffer rbuf,and send buffer, if the two   buffer are the xdr buffer?
+
+8.for the server,in line49 recvfrom(),why here buffer length is buflen-1,not buflen. and for the addrlen,at first we don't know this,so here is the address,but why we need addrlen = sizeof(struct sockaddr_in); and the pass the address again.
+
+9.when we use the read() function,when it just read part of the socket,we use loop to read the whole socket,for the buffer we can use the pointer,but for the socket how does it know the position for the next reading? 
+
+10.after converting xdr_xdrhyper(),if the stream written to the buf?
+
+11.if we use the req = input automaticly convert the int type input to the 8bytes xdrhyper,and it is the xdr type,why we need to use the xdr_xdrhyper again?
+
+12.for select(),if we have more than one socket get ready,the return value n>0;how can we choose from which socket to read the data?
+
+13.line 119 why here use input = res.request,output = res.response; and the request and response is hyper 8bytes,and input and output is 4bytes.
+
+14.when we define a XDR stream, it can just use once?
+
