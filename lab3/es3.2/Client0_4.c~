@@ -1,0 +1,298 @@
+#include     <stdio.h>
+#include     <stdlib.h>
+#include     <string.h>
+#include     <inttypes.h>
+#include     <sys/ioctl.h>
+#include     "errlib.h"
+#include     "sockwrap.h"
+#define BUFLEN	1024
+#define TIMEOUT 30
+#define STDIN 0
+
+#define WAIT_OK  1
+#define WAIT_DATA 2
+#define RECEVING_DATA 3
+
+char *prog_name;
+int flag=0;
+int state;
+char filename[BUFLEN][BUFLEN];
+int total_file=0;
+int current_file=0;
+int received=0;
+int left;
+void showAddr(char *str, struct sockaddr_in *a)
+{
+    char *p;
+    
+    p = inet_ntoa(a->sin_addr);
+	printf("%s %s",str,p);
+	printf(":%u\n", ntohs(a->sin_port));
+}
+void detect_command(char *rec,int s);
+void QUIT_CHECK(int socket);
+void write_file(int socket,FILE *file);
+void control_msg(int socket);
+//void read_control_msg(int socket);
+int main(int argc,char **argv)
+{
+	char     	   buf[BUFLEN];		/* transmission buffer */
+        char               rbuf[BUFLEN];
+        short              tport_n,tport_h;
+        int		   s;
+        char              rec[BUFLEN];
+	int		   result;
+	struct sockaddr_in saddr;		/* server address structure */
+	struct in_addr	   sIPaddr; 		/* server IP addr. structure */
+        int    count=0;
+	/* Initialize socket API if needed */
+  
+        /* for errlib to know the program name */
+	prog_name = argv[0];
+	result = inet_aton(argv[1], &sIPaddr);
+        if (!result)
+		{
+                 err_msg("Invalid address\n");
+                 return 0;
+                }
+	//host port number
+        tport_h=atoi(argv[2]);
+  	tport_n = htons(tport_h);
+
+	/* create the socket */
+    	printf("Creating socket\n");
+	s=Socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if(s!=-1)
+	printf("Socket created done.\n");
+        else
+        err_msg("failed to create the socket\n");
+	/* prepare address structure */
+    	saddr.sin_family = AF_INET;
+	saddr.sin_port   = tport_n;
+	saddr.sin_addr   = sIPaddr;
+
+	/* connect */
+	result=connect(s, (struct sockaddr *) &saddr, sizeof(saddr));
+	if (result == -1)
+		err_msg("connect() failed");
+	showAddr("connect done to \n,",&saddr);
+   /*------------------do the multiplexing of the client one socket is the connected socketed, another one the stdin socket---*/
+     fd_set     cset;
+     int        s1,n;
+     struct timeval    tval;
+     while(1)
+      {
+      FD_ZERO(&cset);
+      FD_SET(s,&cset);
+      FD_SET(STDIN,&cset);
+      printf("Enter command:\n");
+      sleep(2);
+      n=select(FD_SETSIZE,&cset,NULL,NULL,NULL);
+        if(n<=0)
+              {      
+                 err_msg("select()failed");
+                 continue;
+              }
+
+if(FD_ISSET(STDIN,&cset)&&flag==0)     //flag=0 means now haven't send to server QUIT
+         {
+         printf("Event on stdin\n");
+          detect_command(rec,s);
+          }
+/*---------------request to forcefully terminate the server connection-----*/
+        
+if(FD_ISSET(s,&cset))
+         {
+        printf("Event on sock\n");
+         
+/*---------socket s read is ready --------------------*/
+           switch(state)
+           {
+           case WAIT_OK:
+           control_msg(s);
+           break;
+
+           case WAIT_DATA:
+           state=RECEVING_DATA;
+           printf("now receiving %d file %s\n",current_file,filename[current_file]);
+           filename[current_file][strlen(filename[current_file])-2]='\0';
+           FILE *fp=fopen(filename[current_file],"wb");
+           if(fp==NULL)
+           printf("file open failed\n");
+           write_file(s,fp);
+           break;
+ 
+          case RECEVING_DATA:
+          write_file(s,fp);
+          break;
+    }     
+   } 
+  } 
+ }
+    
+void detect_command(char *rec,int s){
+     
+     char   com[BUFLEN];
+     char   command[BUFLEN];
+     memset(com,0,BUFLEN);
+     memset(command,0,BUFLEN);
+      /* on linux ctrl+D generates EOF, and need to check the fgets everytime and when EOF is encountered,fgets() return a null pointer*/
+         fgets(rec,BUFLEN,stdin);
+        // command[strlen(command)-1]='\0';
+         sscanf(rec,"%s",command);
+   /*--------now check the command--------*/
+   /*--------GET FILE--------------------*/
+         if(strcmp(command,"GET")==0)
+            {
+            sscanf(rec,"%*s%s",filename[total_file]);
+            sprintf(com,"%s","GET ");
+            strcat(filename[total_file],"\r\n");
+            strcat(com,filename[total_file]);
+            /*send the buf to the socket*/
+            Writen (s,com,strlen(com));
+           /*read from the socket*/
+            printf("request data has been sent\n");
+            total_file++;
+            if(total_file==1)
+             state=WAIT_OK;
+           }
+ /*--------------requests to close the connection with the server--------*/
+          else if(strcmp(command,"Q")==0)
+            {
+            if(received!=total_file)
+            {
+                flag=1;
+                return;
+            }
+            else
+           {
+            memset(com,0,BUFLEN);
+            sprintf(com,"QUIT\r\n");
+            writen(s,com,strlen(com));
+           // printf("received total %d files ",total_file);
+            printf("bye~(QUIT)\n");
+            close(s);
+            exit(0);
+            } 
+          }
+         else if(strcmp(command,"A")==0)
+          {
+          printf("BYE~(abort)\n");
+          close(s);
+          exit (0);
+          }
+         else 
+          printf("wrong commands,please input again\n");
+         return;
+                      
+}
+void QUIT_CHECK(int socket)
+{
+  int s;
+  s=socket;
+ if(received==total_file)
+              {  
+       
+                if(flag)
+                {
+                // printf("if Q,received %d current_file %d,total %d\n",received,current_file,total_file);
+                 printf("bye~ (QUIT)\n");
+                 close(s);
+                 exit(0);
+                }
+               else
+               current_file++;
+               state=WAIT_OK;
+             }
+            else
+            {
+   // printf("if not Q,received %d current_file %d,total %d\n",received,current_file,total_file);
+             current_file++;
+             state=WAIT_OK;
+           }
+}
+void write_file(int socket,FILE *file)
+{
+FILE *fp=file;
+ int len;
+ int nread;
+ int s;
+ char buf[BUFLEN];	
+ s=socket;
+         if(left>BUFLEN)
+          len=BUFLEN;  
+        else 
+          len=left;
+          // printf("left=%d,len=%d\n",left,len);
+       if((nread = read(s,buf,len))>0)
+         {
+          fwrite(buf,sizeof(char),nread,fp);
+         // printf("write block %d bytes\n",nread);
+          left-=nread;
+        }
+       else if(nread<=0)
+         {
+          printf("readn:error");
+          close(s);
+          exit(1);    //error exit
+        }
+      if(left==0)
+      { 
+      printf("file %s is ready.\n",filename[current_file]);    
+      close(fp);
+      received++;
+      QUIT_CHECK(s);
+     }
+}
+void control_msg(int socket)
+{         
+          int s;
+          char rbuf[BUFLEN];
+          uint32_t   size,time;
+          int n;
+          memset(rbuf,0,BUFLEN);
+          s=socket;
+           int f=0;
+           ioctl(s,FIONREAD,&f);
+           if(f==0)
+              {
+               printf("server closed.\n");
+               close(s);
+               exit(0);
+               return;
+              }
+           readline_unbuffered (s, rbuf,10);
+           printf("received string %s",rbuf); 
+          //receive size 
+           if(strcmp(rbuf,"-ERR\r\n")==0)
+            {  
+             received++;
+            //printf("-ERR received %d current_file %d,total %d   \n",received,current_file,total_file);
+             QUIT_CHECK(s);
+             return;
+            }
+          else
+            {
+            printf("now downloading file %s.......\n",filename[current_file]);
+            state=WAIT_DATA;
+            //rbuf[0]='\0';
+            Readn(s,&size,sizeof(size));
+            uint32_t size_l=ntohl(size);
+            printf("received file size ");
+            printf("'%" PRIu32 "'\n",size_l);
+          //receive date
+            Readn(s,&time,sizeof(time));
+            uint32_t time_l=ntohl(time);
+            printf("received file timestamp ");
+            printf("'%" PRIu32 "'\n",time_l);
+            left=size_l;
+           } 
+}
+
+
+
+
+     
+        
+      
+       
